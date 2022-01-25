@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "rich-elm"
+version = "0.1.0"
+description = ""
+authors = ["Aatif Syed <aatifsyedyp@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+rich = "^11.0.0"
+textual = "^0.1.14"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6"
+mypy = "^0.931"
+black = "^21.12b0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
