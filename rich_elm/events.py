@@ -18,21 +18,20 @@ from prompt_toolkit.key_binding import KeyPress
 
 
 @contextmanager
-def for_stdin() -> Generator["Queue[KeyPress]", None, None]:
-    queue: "Queue[KeyPress]" = Queue()
+def for_stdin(*, queue: Queue) -> Generator[None, None, None]:
     die = False
     fileno = sys.stdin.fileno()
     selector = selectors.DefaultSelector()
     selector.register(fileno, selectors.EVENT_READ)
     parser = Vt100Parser(feed_key_callback=lambda key_press: queue.put(key_press))
 
-    def enqueue():
+    def parse():
         while not die:
             for selector_key, mask in selector.select(timeout=0.002):
                 if mask | selectors.EVENT_READ:
                     parser.feed(os.read(fileno, 1).decode("utf-8"))
 
-    event_thread = Thread(target=enqueue, name="event_thread")
+    event_thread = Thread(target=parse, name="event_thread")
     event_thread.start()
 
     old = termios.tcgetattr(fileno)
@@ -67,7 +66,7 @@ def for_stdin() -> Generator["Queue[KeyPress]", None, None]:
 
     try:
         with closing(selector):
-            yield queue
+            yield
 
             # We've exited the parent context
             die = True  # Tell the thread to die
@@ -82,13 +81,12 @@ class Signal:
     signum: int
 
 
-def for_signals(*sig: Signals) -> Generator["Queue[Signal]", None, None]:
-    queue: "Queue[Signal]" = Queue()
-
+@contextmanager
+def for_signals(*sig: Signals, queue=Queue) -> Generator[None, None, None]:
     def enqueue_signal(signum: int, frame: Optional[FrameType]):
         queue.put(Signal(signum))
 
     for s in sig:
         signal.signal(s, enqueue_signal)
 
-    yield queue
+    yield
