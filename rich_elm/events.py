@@ -1,0 +1,94 @@
+import os
+import selectors
+import signal
+import sys
+import termios
+import tty
+from contextlib import closing, contextmanager
+from copy import deepcopy
+from dataclasses import dataclass
+from queue import Queue
+from signal import Signals
+from threading import Thread
+from types import FrameType
+from typing import Generator, Optional
+
+from prompt_toolkit.input.vt100_parser import Vt100Parser
+from prompt_toolkit.key_binding import KeyPress
+
+
+@contextmanager
+def for_stdin() -> Generator["Queue[KeyPress]", None, None]:
+    queue: "Queue[KeyPress]" = Queue()
+    die = False
+    fileno = sys.stdin.fileno()
+    selector = selectors.DefaultSelector()
+    selector.register(fileno, selectors.EVENT_READ)
+    parser = Vt100Parser(feed_key_callback=lambda key_press: queue.put(key_press))
+
+    def enqueue():
+        while not die:
+            for selector_key, mask in selector.select(timeout=0.002):
+                if mask | selectors.EVENT_READ:
+                    parser.feed(os.read(fileno, 1).decode("utf-8"))
+
+    event_thread = Thread(target=enqueue, name="event_thread")
+    event_thread.start()
+
+    old = termios.tcgetattr(fileno)
+    new = deepcopy(old)
+
+    # Reference: https://smlfamily.github.io/Basis/posix-tty.html
+    # Copied from Prompt Toolkit: https://github.com/prompt-toolkit/python-prompt-toolkit/blob/e9eac2eb/prompt_toolkit/input/vt100.py#L216
+
+    # Local control modes
+    new[tty.LFLAG] &= ~(  # Turn off the following...
+        0
+        | termios.ECHO  # Show the user what they're typing in. Without this, the screen will flicker
+        | termios.ICANON  # Canonical mode. Without this, vmin is ignored, and nothing works
+        | termios.IEXTEN  # Extended functionality
+        # | termios.ISIG  # Mapping input characters to signals. Without this, ^C will raise a KeyboardInterrupt
+    )
+
+    # Input control
+    new[tty.IFLAG] &= ~(  # Turn off the following...
+        0
+        | termios.IXON  # Output control
+        | termios.IXOFF  # Input control
+        | termios.ICRNL  # Mapping CR to NL on input
+        | termios.INLCR  # Mapping NL to CR on input
+        | termios.IGNCR  # Ignore CR
+    )
+
+    # The number of characters read at a time in non-canonical mode
+    new[tty.CC][termios.VMIN] = 1
+
+    termios.tcsetattr(fileno, termios.TCSANOW, new)
+
+    try:
+        with closing(selector):
+            yield queue
+
+            # We've exited the parent context
+            die = True  # Tell the thread to die
+            event_thread.join()  # Join it, avoiding a read from an invalid file descriptor
+    finally:
+        # Reset the terminal's settings
+        termios.tcsetattr(fileno, termios.TCSANOW, old)
+
+
+@dataclass
+class Signal:
+    signum: int
+
+
+def for_signals(*sig: Signals) -> Generator["Queue[Signal]", None, None]:
+    queue: "Queue[Signal]" = Queue()
+
+    def enqueue_signal(signum: int, frame: Optional[FrameType]):
+        queue.put(Signal(signum))
+
+    for s in sig:
+        signal.signal(s, enqueue_signal)
+
+    yield queue

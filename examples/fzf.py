@@ -1,21 +1,16 @@
 from dataclasses import dataclass, field
-from typing import Any, Generator, List, Union
+from signal import Signals
+from typing import List, Union
 
 from fuzzywuzzy.fuzz import ratio  # type: ignore
 from lorem_text.lorem import sentence  # type: ignore
-from prompt_toolkit.input.vt100_parser import Vt100Parser
-from prompt_toolkit.key_binding import KeyPress
-from prompt_toolkit.keys import Keys
 from rich.console import Console, ConsoleRenderable, RichCast
 from rich.layout import Layout
-from rich.live import Live
 from rich.panel import Panel
-from rich.progress import Progress
-from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
-
-from . import events
+from rich_elm import events
+from returns.result import safe
 
 
 @dataclass
@@ -43,14 +38,16 @@ class FuzzyFinder(RichCast):
         return layout
 
 
-with Console(stderr=True).screen() as ctx, events.for_stdin() as key_presses:
+with Console(
+    stderr=True
+).screen() as ctx, events.for_stdin() as key_presses, events.for_signals(
+    Signals.SIGWINCH
+) as received_signals:
     console: Console = ctx.console
     state = FuzzyFinder(haystack=[sentence() for _ in range(100)])
     console.update_screen(state)
 
-    while key_press := key_presses.get():
-        print(key_press)
-        if key_press.data == "\r":
-            break
+    while event := safe(key_presses.get_nowait)().alt():
+        print(event)
 
         console.update_screen(state)

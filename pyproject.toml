@@ -10,6 +10,9 @@ rich = "^11.0.0"
 textual = "^0.1.14"
 fuzzywuzzy = "^0.18.0"
 lorem-text = "^2.1"
+python-Levenshtein = "^0.12.2"
+prompt-toolkit = "^3.0.24"
+returns = "^0.18.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6"
