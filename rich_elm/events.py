@@ -14,7 +14,6 @@ from types import FrameType
 from typing import Generator, Optional
 
 from prompt_toolkit.input.vt100_parser import Vt100Parser
-from prompt_toolkit.key_binding import KeyPress
 
 
 @contextmanager
@@ -86,7 +85,7 @@ def for_signals(*sig: Signals, queue=Queue) -> Generator[None, None, None]:
     def enqueue_signal(signum: int, frame: Optional[FrameType]):
         queue.put(Signal(signum))
 
-    for s in sig:
-        signal.signal(s, enqueue_signal)
-
+    old_handlers = {s: signal.signal(s, enqueue_signal) for s in sig}
     yield
+    for s, old_handler in old_handlers.items():
+        signal.signal(s, old_handler)
