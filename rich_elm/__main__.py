@@ -5,18 +5,22 @@ import termios
 import tty
 from contextlib import closing, contextmanager
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Queue
 from threading import Condition, Thread
 from time import sleep
-from typing import Any, Generator, Union
+from typing import Any, Generator, List, Union
 
+from fuzzywuzzy.fuzz import ratio
+from lorem_text.lorem import sentence
 from rich.console import Console, ConsoleRenderable, RichCast
 from rich.layout import Layout
 from rich.live import Live
+from rich.panel import Panel
 from rich.progress import Progress
 from rich.spinner import Spinner
+from rich.table import Table
 from rich.text import Text
 
 
@@ -79,20 +83,32 @@ def stdin_events() -> Generator["Queue[bytes]", None, None]:
 
 @dataclass
 class FuzzyFinder(RichCast):
-    text: str = ""
+    haystack: List[str] = field(default_factory=list)
+    needle: str = ""
 
     def __rich__(self) -> Union[ConsoleRenderable, str]:
         layout = Layout()
-        header = Layout(name="header")
-        body = Layout(name="body")
-        footer = Layout(renderable=Text(text=self.text, style="red"), name="footer")
-        layout.split_column(header, body, footer)
+
+        table = Table(show_header=False, header_style="none")
+        for candidate in sorted(
+            self.haystack,
+            key=lambda candidate: ratio(candidate, self.needle),
+            reverse=True,
+        ):
+            table.add_row(candidate)
+
+        search_box = Layout(
+            renderable=Panel(Text(text=self.needle, style="red")),
+            size=3,
+        )
+
+        layout.split_column(table, search_box)
         return layout
 
 
 with Console().screen() as ctx, stdin_events() as events:
     console: Console = ctx.console
-    state = FuzzyFinder()
+    state = FuzzyFinder(haystack=[sentence() for _ in range(100)])
     console.update_screen(state)
 
     while event := events.get():
@@ -100,5 +116,6 @@ with Console().screen() as ctx, stdin_events() as events:
         if s == "q":
             break
         else:
-            state.text += s
-            console.update_screen(state)
+            state.needle += s
+
+        console.update_screen(state)
