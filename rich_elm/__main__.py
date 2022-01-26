@@ -1,5 +1,6 @@
 import os
 import selectors
+import sys
 import termios
 import tty
 from contextlib import closing, contextmanager
@@ -7,12 +8,10 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Queue
-from sys import stdin
 from threading import Condition, Thread
 from time import sleep
 from typing import Any, Generator, Union
 
-from black import sys
 from rich.console import Console, ConsoleRenderable, RichCast
 from rich.layout import Layout
 from rich.live import Live
