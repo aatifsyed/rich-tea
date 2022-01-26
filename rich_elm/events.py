@@ -63,16 +63,16 @@ def for_stdin(*, queue: Queue) -> Generator[None, None, None]:
 
     termios.tcsetattr(fileno, termios.TCSANOW, new)
 
-    try:
-        with closing(selector):
+    with closing(selector):
+        try:
             yield
 
             # We've exited the parent context
             die = True  # Tell the thread to die
             event_thread.join()  # Join it, avoiding a read from an invalid file descriptor
-    finally:
-        # Reset the terminal's settings
-        termios.tcsetattr(fileno, termios.TCSANOW, old)
+        finally:
+            # Reset the terminal's settings
+            termios.tcsetattr(fileno, termios.TCSANOW, old)
 
 
 @dataclass
@@ -86,6 +86,8 @@ def for_signals(*sig: Signals, queue=Queue) -> Generator[None, None, None]:
         queue.put(Signal(signum))
 
     old_handlers = {s: signal.signal(s, enqueue_signal) for s in sig}
-    yield
-    for s, old_handler in old_handlers.items():
-        signal.signal(s, old_handler)
+    try:
+        yield
+    finally:
+        for s, old_handler in old_handlers.items():
+            signal.signal(s, old_handler)
