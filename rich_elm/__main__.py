@@ -40,20 +40,42 @@ def stdin_events() -> Generator["Queue[bytes]", None, None]:
 
     old = termios.tcgetattr(fileno)
     new = deepcopy(old)
+
     # Reference: https://smlfamily.github.io/Basis/posix-tty.html
     # Copied from Textualize https://github.com/Textualize/textual/blob/6f7981/src/textual/_linux_driver.py#L100
-    new[tty.LFLAG] &= ~(termios.ECHO | termios.ICANON | termios.IEXTEN | termios.ISIG)
-    new[tty.IFLAG] &= ~(
-        termios.IXON | termios.IXOFF | termios.ICRNL | termios.INLCR | termios.IGNCR
+
+    # Local control modes
+    new[tty.LFLAG] &= ~(  # Turn off the following...
+        0
+        | termios.ECHO  # Show the user what they're typing in. Without this, the screen will flicker
+        | termios.ICANON  # Canonical mode. Without this, vmin is ignored, and nothing works
+        | termios.IEXTEN  # Extended functionality
+        # | termios.ISIG  # Mapping input characters to signals. Without this, ^C will raise a KeyboardInterrupt
     )
+
+    # Input control
+    new[tty.IFLAG] &= ~(  # Turn off the following...
+        0
+        | termios.IXON  # Output control
+        | termios.IXOFF  # Input control
+        | termios.ICRNL  # Mapping CR to NL on input
+        | termios.INLCR  # Mapping NL to CR on input
+        | termios.IGNCR  # Ignore CR
+    )
+
+    # The number of characters read at a time in non-canonical mode
     new[tty.CC][termios.VMIN] = 1
+
     termios.tcsetattr(fileno, termios.TCSANOW, new)
 
-    with closing(selector):
-        yield queue
-        die = True
-        event_thread.join()
-    termios.tcsetattr(fileno, termios.TCSANOW, old)
+    try:
+        with closing(selector):
+            yield queue
+            die = True  # Tell the thread to die
+            event_thread.join()  # Join it, avoiding a read from an invalid file descriptor
+    finally:
+        # Reset the terminal's settings
+        termios.tcsetattr(fileno, termios.TCSANOW, old)
 
 
 @dataclass
