@@ -130,51 +130,50 @@ class ListViewRender:
         return table.__rich_console__(console, options)
 
 
-@safe(exceptions=(KeyboardInterrupt,))  # type: ignore
-def list_viewer_safe(candidates: Iterable[str]) -> Set[str]:
-    queue: "Queue[KeyPress | Signal]" = Queue()
-    with Console(stderr=True).screen() as ctx, events.for_signals(
-        SIGWINCH, queue=queue
-    ), events.for_stdin(queue=queue):
-        console: Console = ctx.console
-        state = ListView(candidates=[Select(c) for c in candidates])
-
-        console.update_screen(ListViewRender(state))  # Initial display
-
-        while event := queue.get():
-            if isinstance(event, Signal):
-                console.update_screen(ListViewRender(state))  # Redraw on resize
-            elif isinstance(event.key, Keys):
-                if event.key == Keys.Up or event.key == Keys.Left:
-                    state.bump_up()
-                elif event.key == Keys.Down or event.key == Keys.Right:
-                    state.bump_down()
-                elif event.key == Keys.Tab:
-                    state.toggle_current()
-                elif event.key == Keys.Home:
-                    state.jump_to_top()
-                elif event.key == Keys.End:
-                    state.jump_to_bottom()
-                elif event.key == Keys.Enter:
-                    return set(
-                        candidate.inner
-                        for candidate in state.candidates
-                        if candidate.selected
-                    )
-                else:
-                    raise NotImplementedError(event)
-                console.update_screen(ListViewRender(state))
-
-
-def list_viewer(candidates: Iterable[str]) -> Optional[Set[str]]:
-    return list_viewer_safe(candidates).value_or(None)
-
-
 if __name__ == "__main__":
     from logging import FileHandler
 
     logger.addHandler(FileHandler("list-view.log", mode="w"))
     logger.setLevel(logging.DEBUG)
+
+    @safe(exceptions=(KeyboardInterrupt,))  # type: ignore
+    def list_viewer_safe(candidates: Iterable[str]) -> Set[str]:
+        queue: "Queue[KeyPress | Signal]" = Queue()
+        with Console(stderr=True).screen() as ctx, events.for_signals(
+            SIGWINCH, queue=queue
+        ), events.for_stdin(queue=queue):
+            console: Console = ctx.console
+            state = ListView(candidates=[Select(c) for c in candidates])
+
+            console.update_screen(ListViewRender(state))  # Initial display
+
+            while event := queue.get():
+                if isinstance(event, Signal):
+                    console.update_screen(ListViewRender(state))  # Redraw on resize
+                elif isinstance(event.key, Keys):
+                    if event.key == Keys.Up or event.key == Keys.Left:
+                        state.bump_up()
+                    elif event.key == Keys.Down or event.key == Keys.Right:
+                        state.bump_down()
+                    elif event.key == Keys.Tab:
+                        state.toggle_current()
+                    elif event.key == Keys.Home:
+                        state.jump_to_top()
+                    elif event.key == Keys.End:
+                        state.jump_to_bottom()
+                    elif event.key == Keys.Enter:
+                        return set(
+                            candidate.inner
+                            for candidate in state.candidates
+                            if candidate.selected
+                        )
+                    else:
+                        raise NotImplementedError(event)
+                    console.update_screen(ListViewRender(state))
+
+    def list_viewer(candidates: Iterable[str]) -> Optional[Set[str]]:
+        return list_viewer_safe(candidates).value_or(None)
+
     print(
         list_viewer(
             [
