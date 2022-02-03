@@ -7,12 +7,7 @@ from fuzzywuzzy.fuzz import ratio  # type: ignore
 from prompt_toolkit.key_binding import KeyPress
 from prompt_toolkit.keys import Keys
 from returns.result import safe
-from rich.console import (
-    Console,
-    ConsoleOptions,
-    ConsoleRenderable,
-    RenderResult,
-)
+from rich.console import Console, ConsoleOptions, ConsoleRenderable, RenderResult
 from rich.layout import Layout
 from rich.text import Text
 from rich_elm import events
@@ -109,6 +104,10 @@ def fuzzyfinder_safe(candidates: Iterable[str]) -> Set[str]:
                     state.needle = state.needle[:-1]
                 elif event.key == Keys.Enter:
                     return state.selected
+                elif event.key == Keys.Home:
+                    state.cursor = 0
+                elif event.key == Keys.End:
+                    state.cursor = max_index(state.haystack)
                 else:
                     raise NotImplementedError(event)
             else:
@@ -121,29 +120,34 @@ def fuzzyfinder(candidates: Iterable[str]) -> Optional[Set[str]]:
 
 
 if __name__ == "__main__":
-    print(
-        fuzzyfinder(
-            [
-                "The Zen of Python, by Tim Peters",
-                "Beautiful is better than ugly.",
-                "Explicit is better than implicit.",
-                "Simple is better than complex.",
-                "Complex is better than complicated.",
-                "Flat is better than nested.",
-                "Sparse is better than dense.",
-                "Readability counts.",
-                "Special cases aren't special enough to break the rules.",
-                "Although practicality beats purity.",
-                "Errors should never pass silently.",
-                "Unless explicitly silenced.",
-                "In the face of ambiguity, refuse the temptation to guess.",
-                "There should be one-- and preferably only one --obvious way to do it.",
-                "Although that way may not be obvious at first unless you're Dutch.",
-                "Now is better than never.",
-                "Although never is often better than *right* now.",
-                "If the implementation is hard to explain, it's a bad idea.",
-                "If the implementation is easy to explain, it may be a good idea.",
-                "Namespaces are one honking great idea -- let's do more of those!",
-            ]
-        )
+    import sys
+
+    selected = fuzzyfinder(
+        [
+            "The Zen of Python, by Tim Peters",
+            "Beautiful is better than ugly.",
+            "Explicit is better than implicit.",
+            "Simple is better than complex.",
+            "Complex is better than complicated.",
+            "Flat is better than nested.",
+            "Sparse is better than dense.",
+            "Readability counts.",
+            "Special cases aren't special enough to break the rules.",
+            "Although practicality beats purity.",
+            "Errors should never pass silently.",
+            "Unless explicitly silenced.",
+            "In the face of ambiguity, refuse the temptation to guess.",
+            "There should be one-- and preferably only one --obvious way to do it.",
+            "Although that way may not be obvious at first unless you're Dutch.",
+            "Now is better than never.",
+            "Although never is often better than *right* now.",
+            "If the implementation is hard to explain, it's a bad idea.",
+            "If the implementation is easy to explain, it may be a good idea.",
+            "Namespaces are one honking great idea -- let's do more of those!",
+        ]
     )
+    if selected is None:
+        sys.exit(1)
+    else:
+        for s in selected:
+            print(s)
