@@ -1,28 +1,22 @@
+import logging
 from dataclasses import dataclass
+from itertools import islice
 from queue import Queue
 from signal import SIGWINCH
-from typing import Generic, Iterable, List, Optional, Set, TypeVar, Union
+from typing import Generic, Iterable, List, Optional, TypeVar
 
-from fuzzywuzzy.fuzz import ratio  # type: ignore
 from prompt_toolkit.key_binding import KeyPress
 from prompt_toolkit.keys import Keys
 from returns.result import safe
-from rich.color import Color
 from rich.console import (
     Console,
     ConsoleOptions,
-    ConsoleRenderable,
-    OverflowMethod,
     RenderResult,
-    RichCast,
 )
 from rich.style import Style
-from rich.table import Table, box
 from rich.text import Text
 from rich_elm import events
 from rich_elm.events import Signal
-from more_itertools import mark_ends
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +34,10 @@ def saturating_sub(i: int, s: int, min: int) -> int:
     if (sum := i - s) < min:
         return min
     return sum
+
+
+def max_index(l: List):
+    return len(l) - 1
 
 
 def ellipsify_end(s: str, max_width: int) -> str:
@@ -69,36 +67,26 @@ class ListView:
     candidates: List[Select[str]]
     cursor: int = 0
     """Tracks the currently selected item in the viewport, in the list"""
-    offset: int = 0
-    """The offset of the cursor from the top of the viewport"""
 
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
-        logger.info(self)
-        # cursor=0, offset=0
-        # >
-        # ...
+        logger.info(f"{len(self.candidates)=}, {self.cursor=}")
 
-        # cursor=1, offset=1
-        # .
-        # >
-        # ...
+        if self.cursor >= options.max_height:
+            # v O ...
+            # v O ...
+            # v O ... max_height = 3
+            #   O ...
+            #   X ... cursor = 4
+            start = (self.cursor - options.max_height) + 1
+        else:
+            start = 0
 
-        # cursor=N, offset=N
-        # ...
-        # >
-
-        # cursor=N, offset=N-1
-        # ...
-        # >
-        # .
-
-        candidates = self.candidates[self.cursor :]
-        start = self.cursor - self.offset
-        candidates = candidates[start : options.max_height]
-        for i, candidate in enumerate(candidates):
-            if i == self.offset:
+        for i, candidate in islice(
+            enumerate(self.candidates), start, len(self.candidates)
+        ):
+            if i == self.cursor:
                 yield Text(
                     text=ellipsify_start(candidate.inner, options.max_width),
                     style=Style(bgcolor="white", color="black"),
@@ -126,7 +114,7 @@ def list_viewer_safe(candidates: Iterable[str]) -> str:
                     state.cursor = saturating_sub(state.cursor, 1, 0)
                 elif event.key == Keys.Down:
                     state.cursor = saturating_add(
-                        state.cursor, 1, len(state.candidates)
+                        state.cursor, 1, max_index(state.candidates)
                     )
                 else:
                     raise NotImplementedError(event)
