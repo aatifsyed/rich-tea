@@ -15,7 +15,6 @@ from rich.console import (
     RenderResult,
 )
 from rich.style import Style
-from rich.text import Text
 from rich_elm import events
 from rich_elm.events import Signal
 from rich.table import Table, Column
@@ -54,10 +53,31 @@ class ListView:
     cursor: int = 0
     """Tracks the currently selected item in the viewport, in the list"""
 
+    def bump_up(self):
+        self.cursor = saturating_sub(self.cursor, 1, 0)
+
+    def bump_down(self):
+        self.cursor = saturating_add(self.cursor, 1, max_index(self.candidates))
+
+    def toggle_current(self):
+        cursored = self.candidates[self.cursor]
+        cursored.selected = not cursored.selected
+
+    def jump_to_top(self):
+        self.cursor = 0
+
+    def jump_to_bottom(self):
+        self.cursor = max_index(self.candidates)
+
+
+@dataclass
+class ListViewRender:
+    inner: ListView
+
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
-        logger.info(f"{len(self.candidates)=}, {self.cursor=}")
+        logger.info(f"{len(self.inner.candidates)=}, {self.inner.cursor=}")
         table = Table(
             *(
                 Column(header=name, no_wrap=True, min_width=1)
@@ -67,18 +87,18 @@ class ListView:
             show_header=False,
         )
 
-        if self.cursor >= options.max_height:
+        if self.inner.cursor >= options.max_height:
             # v O ...
             # v O ...
             # v O ... max_height = 3
             #   O ...
             #   X ... cursor = 4
-            start = (self.cursor - options.max_height) + 1
+            start = (self.inner.cursor - options.max_height) + 1
         else:
             start = 0
 
         for is_first, is_last, (i, candidate) in mark_ends(
-            islice(enumerate(self.candidates), start, start + options.max_height)
+            islice(enumerate(self.inner.candidates), start, start + options.max_height)
         ):
             if is_first and not is_last:
                 if i == 0:
@@ -88,7 +108,7 @@ class ListView:
             elif is_first and is_last:
                 scrollbar = "■"
             elif is_last:
-                if i == max_index(self.candidates):
+                if i == max_index(self.inner.candidates):
                     scrollbar = "■"
                 else:
                     scrollbar = "▼"
@@ -100,7 +120,7 @@ class ListView:
             else:
                 toggled = " "
 
-            if i == self.cursor:
+            if i == self.inner.cursor:
                 style = Style(bgcolor="white", color="black")
             else:
                 style = None
@@ -119,25 +139,22 @@ def list_viewer_safe(candidates: Iterable[str]) -> Set[str]:
         console: Console = ctx.console
         state = ListView(candidates=[Select(c) for c in candidates])
 
-        console.update_screen(state)  # Initial display
+        console.update_screen(ListViewRender(state))  # Initial display
 
         while event := queue.get():
             if isinstance(event, Signal):
-                console.update_screen(state)  # Redraw on resize
+                console.update_screen(ListViewRender(state))  # Redraw on resize
             elif isinstance(event.key, Keys):
                 if event.key == Keys.Up or event.key == Keys.Left:
-                    state.cursor = saturating_sub(state.cursor, 1, 0)
+                    state.bump_up()
                 elif event.key == Keys.Down or event.key == Keys.Right:
-                    state.cursor = saturating_add(
-                        state.cursor, 1, max_index(state.candidates)
-                    )
+                    state.bump_down()
                 elif event.key == Keys.Tab:
-                    cursored = state.candidates[state.cursor]
-                    cursored.selected = not cursored.selected
+                    state.toggle_current()
                 elif event.key == Keys.Home:
-                    state.cursor = 0
+                    state.jump_to_top()
                 elif event.key == Keys.End:
-                    state.cursor = max_index(state.candidates)
+                    state.jump_to_bottom()
                 elif event.key == Keys.Enter:
                     return set(
                         candidate.inner
@@ -146,7 +163,7 @@ def list_viewer_safe(candidates: Iterable[str]) -> Set[str]:
                     )
                 else:
                     raise NotImplementedError(event)
-                console.update_screen(state)
+                console.update_screen(ListViewRender(state))
 
 
 def list_viewer(candidates: Iterable[str]) -> Optional[Set[str]]:
