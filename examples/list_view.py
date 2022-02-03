@@ -3,7 +3,8 @@ from dataclasses import dataclass
 from itertools import islice
 from queue import Queue
 from signal import SIGWINCH
-from typing import Generic, Iterable, List, Optional, TypeVar
+from typing import Generic, Iterable, List, Optional, Set, TypeVar
+from more_itertools import mark_ends
 
 from prompt_toolkit.key_binding import KeyPress
 from prompt_toolkit.keys import Keys
@@ -17,6 +18,7 @@ from rich.style import Style
 from rich.text import Text
 from rich_elm import events
 from rich_elm.events import Signal
+from rich.table import Table, Column
 
 logger = logging.getLogger(__name__)
 
@@ -40,22 +42,6 @@ def max_index(l: List):
     return len(l) - 1
 
 
-def ellipsify_end(s: str, max_width: int) -> str:
-    if len(s) > max_width:
-        s = s[: max_width - 3]
-        return f"{s}..."
-    else:
-        return s
-
-
-def ellipsify_start(s: str, max_width: int) -> str:
-    if len(s) > max_width:
-        s = s[-max_width + 3 :]
-        return f"...{s}"
-    else:
-        return s
-
-
 @dataclass
 class Select(Generic[T]):
     inner: T
@@ -72,6 +58,14 @@ class ListView:
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
         logger.info(f"{len(self.candidates)=}, {self.cursor=}")
+        table = Table(
+            *(
+                Column(header=name, no_wrap=True, min_width=1)
+                for name in ["scrollbar", "toggle", "text"]
+            ),
+            box=None,
+            show_header=False,
+        )
 
         if self.cursor >= options.max_height:
             # v O ...
@@ -83,20 +77,41 @@ class ListView:
         else:
             start = 0
 
-        for i, candidate in islice(
-            enumerate(self.candidates), start, len(self.candidates)
+        for is_first, is_last, (i, candidate) in mark_ends(
+            islice(enumerate(self.candidates), start, start + options.max_height)
         ):
-            if i == self.cursor:
-                yield Text(
-                    text=ellipsify_start(candidate.inner, options.max_width),
-                    style=Style(bgcolor="white", color="black"),
-                )
+            if is_first and not is_last:
+                if i == 0:
+                    scrollbar = "■"
+                else:
+                    scrollbar = "▲"
+            elif is_first and is_last:
+                scrollbar = "■"
+            elif is_last:
+                if i == max_index(self.candidates):
+                    scrollbar = "■"
+                else:
+                    scrollbar = "▼"
             else:
-                yield Text(text=ellipsify_end(candidate.inner, options.max_width))
+                scrollbar = "|"
+
+            if candidate.selected:
+                toggled = "+"
+            else:
+                toggled = " "
+
+            if i == self.cursor:
+                style = Style(bgcolor="white", color="black")
+            else:
+                style = None
+
+            table.add_row(scrollbar, toggled, candidate.inner, style=style)
+
+        return table.__rich_console__(console, options)
 
 
 @safe(exceptions=(KeyboardInterrupt,))  # type: ignore
-def list_viewer_safe(candidates: Iterable[str]) -> str:
+def list_viewer_safe(candidates: Iterable[str]) -> Set[str]:
     queue: "Queue[KeyPress | Signal]" = Queue()
     with Console(stderr=True).screen() as ctx, events.for_signals(
         SIGWINCH, queue=queue
@@ -110,18 +125,31 @@ def list_viewer_safe(candidates: Iterable[str]) -> str:
             if isinstance(event, Signal):
                 console.update_screen(state)  # Redraw on resize
             elif isinstance(event.key, Keys):
-                if event.key == Keys.Up:
+                if event.key == Keys.Up or event.key == Keys.Left:
                     state.cursor = saturating_sub(state.cursor, 1, 0)
-                elif event.key == Keys.Down:
+                elif event.key == Keys.Down or event.key == Keys.Right:
                     state.cursor = saturating_add(
                         state.cursor, 1, max_index(state.candidates)
+                    )
+                elif event.key == Keys.Tab:
+                    cursored = state.candidates[state.cursor]
+                    cursored.selected = not cursored.selected
+                elif event.key == Keys.Home:
+                    state.cursor = 0
+                elif event.key == Keys.End:
+                    state.cursor = max_index(state.candidates)
+                elif event.key == Keys.Enter:
+                    return set(
+                        candidate.inner
+                        for candidate in state.candidates
+                        if candidate.selected
                     )
                 else:
                     raise NotImplementedError(event)
                 console.update_screen(state)
 
 
-def list_viewer(candidates: Iterable[str]) -> Optional[str]:
+def list_viewer(candidates: Iterable[str]) -> Optional[Set[str]]:
     return list_viewer_safe(candidates).value_or(None)
 
 
