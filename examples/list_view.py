@@ -21,8 +21,41 @@ from rich.table import Table, box
 from rich.text import Text
 from rich_elm import events
 from rich_elm.events import Signal
+from more_itertools import mark_ends
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 T = TypeVar("T")
+
+
+def saturating_add(i: int, a: int, max: int) -> int:
+    if (sum := i + a) > max:
+        return max
+    return sum
+
+
+def saturating_sub(i: int, s: int, min: int) -> int:
+    if (sum := i - s) < min:
+        return min
+    return sum
+
+
+def ellipsify_end(s: str, max_width: int) -> str:
+    if len(s) > max_width:
+        s = s[: max_width - 3]
+        return f"{s}..."
+    else:
+        return s
+
+
+def ellipsify_start(s: str, max_width: int) -> str:
+    if len(s) > max_width:
+        s = s[-max_width + 3 :]
+        return f"...{s}"
+    else:
+        return s
 
 
 @dataclass
@@ -33,41 +66,55 @@ class Select(Generic[T]):
 
 @dataclass
 class ListView:
-    start: Optional[int]
-    end: Optional[int]
-    selected: int
     candidates: List[Select[str]]
+    cursor: int = 0
+    """Tracks the currently selected item in the viewport, in the list"""
+    offset: int = 0
+    """The offset of the cursor from the top of the viewport"""
 
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
-        pass
+        logger.info(self)
+        # cursor=0, offset=0
+        # >
+        # ...
 
+        # cursor=1, offset=1
+        # .
+        # >
+        # ...
 
-@dataclass
-class FuzzyState(ConsoleRenderable):
-    needle: str
-    choices: List[Select[str]]
-    index: int
+        # cursor=N, offset=N
+        # ...
+        # >
 
-    def __rich_console__(
-        self, console: "Console", options: "ConsoleOptions"
-    ) -> "RenderResult":
-        yield Text(text=self.needle, overflow="ellipsis")
-        for choice in self.choices:
-            yield Text(text=choice.inner, overflow="ellipsis")
+        # cursor=N, offset=N-1
+        # ...
+        # >
+        # .
+
+        candidates = self.candidates[self.cursor :]
+        start = self.cursor - self.offset
+        candidates = candidates[start : options.max_height]
+        for i, candidate in enumerate(candidates):
+            if i == self.offset:
+                yield Text(
+                    text=ellipsify_start(candidate.inner, options.max_width),
+                    style=Style(bgcolor="white", color="black"),
+                )
+            else:
+                yield Text(text=ellipsify_end(candidate.inner, options.max_width))
 
 
 @safe(exceptions=(KeyboardInterrupt,))  # type: ignore
-def fuzzyfinder_safe(candidates: Iterable[str]) -> str:
+def list_viewer_safe(candidates: Iterable[str]) -> str:
     queue: "Queue[KeyPress | Signal]" = Queue()
     with Console(stderr=True).screen() as ctx, events.for_signals(
         SIGWINCH, queue=queue
     ), events.for_stdin(queue=queue):
         console: Console = ctx.console
-        state = FuzzyState(
-            needle="", choices=list(Select(c) for c in candidates), index=0
-        )
+        state = ListView(candidates=[Select(c) for c in candidates])
 
         console.update_screen(state)  # Initial display
 
@@ -75,21 +122,28 @@ def fuzzyfinder_safe(candidates: Iterable[str]) -> str:
             if isinstance(event, Signal):
                 console.update_screen(state)  # Redraw on resize
             elif isinstance(event.key, Keys):
-
-                # Control character
-                raise NotImplementedError(event)
-            else:
-                state.needle += event.key
+                if event.key == Keys.Up:
+                    state.cursor = saturating_sub(state.cursor, 1, 0)
+                elif event.key == Keys.Down:
+                    state.cursor = saturating_add(
+                        state.cursor, 1, len(state.candidates)
+                    )
+                else:
+                    raise NotImplementedError(event)
                 console.update_screen(state)
 
 
-def fuzzyfinder(candidates: Iterable[str]) -> Optional[str]:
-    return fuzzyfinder_safe(candidates).value_or(None)
+def list_viewer(candidates: Iterable[str]) -> Optional[str]:
+    return list_viewer_safe(candidates).value_or(None)
 
 
 if __name__ == "__main__":
+    from logging import FileHandler
+
+    logger.addHandler(FileHandler("list-view.log", mode="w"))
+    logger.setLevel(logging.DEBUG)
     print(
-        fuzzyfinder(
+        list_viewer(
             [
                 "The Zen of Python, by Tim Peters",
                 "Beautiful is better than ugly.",

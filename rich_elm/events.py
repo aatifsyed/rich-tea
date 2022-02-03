@@ -26,9 +26,16 @@ def for_stdin(*, queue: Queue) -> Generator[None, None, None]:
 
     def parse():
         while not die:
-            for selector_key, mask in selector.select(timeout=0.002):
-                if mask | selectors.EVENT_READ:
-                    parser.feed(os.read(fileno, 1).decode("utf-8"))
+            try:
+                for selector_key, mask in selector.select(timeout=0.002):
+                    if mask | selectors.EVENT_READ:
+                        parser.feed(os.read(fileno, 1).decode("utf-8"))
+            except ValueError as e:
+                if e.args == ("I/O operation on closed epoll object",):
+                    # Another thread has closed stdin
+                    break
+                else:
+                    raise
 
     event_thread = Thread(target=parse, name="event_thread")
     event_thread.start()
@@ -45,7 +52,7 @@ def for_stdin(*, queue: Queue) -> Generator[None, None, None]:
         | termios.ECHO  # Show the user what they're typing in. Without this, the screen will flicker
         | termios.ICANON  # Canonical mode. Without this, vmin is ignored, and nothing works
         | termios.IEXTEN  # Extended functionality
-        # | termios.ISIG  # Mapping input characters to signals. Without this, ^C will raise a KeyboardInterrupt
+        # | termios.ISIG  # Mapping input characters to signals. Without this, ^C will raise a KeyboardInterrupt. Note this doesn't include SIGWINCH
     )
 
     # Input control
