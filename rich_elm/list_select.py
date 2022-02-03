@@ -40,7 +40,7 @@ def max_index(l: List):
 
 @dataclass
 class Select(Generic[T]):
-    inner: T
+    item: T
     selected: bool = False
 
     def toggle(self):
@@ -49,34 +49,37 @@ class Select(Generic[T]):
 
 @dataclass
 class Cursor(Generic[T]):
-    inner: List[T]
+    items: List[T]
     cursor: int = 0
 
     @classmethod
     def from_iterable(cls, i: Iterable[T]) -> "Cursor":
-        return Cursor(inner=list(i))
+        return Cursor(items=list(i))
 
     def bump_up(self):
         self.cursor = saturating_sub(self.cursor, 1, 0)
 
     def bump_down(self):
-        self.cursor = saturating_add(self.cursor, 1, max_index(self.inner))
+        self.cursor = saturating_add(self.cursor, 1, max_index(self.items))
 
     def jump_to_top(self):
         self.cursor = 0
 
     def jump_to_bottom(self):
-        self.cursor = max_index(self.inner)
+        self.cursor = max_index(self.items)
+
+    def current(self) -> T:
+        return self.items[self.cursor]
 
 
 @dataclass
 class ListSelectRender:
-    inner: Cursor[Select[str]]
+    data: Cursor[Select[str]]
 
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
-        logger.info(f"{len(self.inner.inner)=}, {self.inner.cursor=}")
+        logger.info(f"{len(self.data.items)=}, {self.data.cursor=}")
         table = Table(
             *(
                 Column(header=name, no_wrap=True, min_width=1)
@@ -86,18 +89,18 @@ class ListSelectRender:
             show_header=False,
         )
 
-        if self.inner.cursor >= options.max_height:
+        if self.data.cursor >= options.max_height:
             # v O ...
             # v O ...
             # v O ... max_height = 3
             #   O ...
             #   X ... cursor = 4
-            start = (self.inner.cursor - options.max_height) + 1
+            start = (self.data.cursor - options.max_height) + 1
         else:
             start = 0
 
         for is_first, is_last, (i, candidate) in mark_ends(
-            islice(enumerate(self.inner.inner), start, start + options.max_height)
+            islice(enumerate(self.data.items), start, start + options.max_height)
         ):
             if is_first and not is_last:
                 if i == 0:
@@ -107,7 +110,7 @@ class ListSelectRender:
             elif is_first and is_last:
                 scrollbar = "■"
             elif is_last:
-                if i == max_index(self.inner.inner):
+                if i == max_index(self.data.items):
                     scrollbar = "■"
                 else:
                     scrollbar = "▼"
@@ -119,12 +122,12 @@ class ListSelectRender:
             else:
                 toggled = " "
 
-            if i == self.inner.cursor:
+            if i == self.data.cursor:
                 style = Style(bgcolor="white", color="black")
             else:
                 style = None
 
-            table.add_row(scrollbar, toggled, candidate.inner, style=style)
+            table.add_row(scrollbar, toggled, candidate.item, style=style)
 
         return table.__rich_console__(console, options)
 
@@ -157,20 +160,27 @@ if __name__ == "__main__":
                     elif event.key == Keys.Down or event.key == Keys.Right:
                         state.bump_down()
                     elif event.key == Keys.Tab:
-                        state.inner[state.cursor].toggle()
+                        state.items[state.cursor].toggle()
                     elif event.key == Keys.Home:
                         state.jump_to_top()
                     elif event.key == Keys.End:
                         state.jump_to_bottom()
                     elif event.key == Keys.Enter:
                         return set(
-                            candidate.inner
-                            for candidate in state.inner
+                            candidate.item
+                            for candidate in state.items
                             if candidate.selected
                         )
                     else:
                         raise NotImplementedError(event)
                     console.update_screen(ListSelectRender(state))
+                elif isinstance(event.key, str):
+                    if event.key == "q":
+                        return set(
+                            candidate.item
+                            for candidate in state.items
+                            if candidate.selected
+                        )
 
     def list_viewer(candidates: Iterable[str]) -> Optional[Set[str]]:
         return list_viewer_safe(candidates).value_or(None)
