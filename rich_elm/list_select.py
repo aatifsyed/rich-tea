@@ -45,7 +45,7 @@ class Select(Generic[T]):
 
 
 @dataclass
-class ListView:
+class ListSelect:
     candidates: List[Select[str]]
     cursor: int = 0
     """Tracks the currently selected item in the viewport, in the list"""
@@ -68,8 +68,8 @@ class ListView:
 
 
 @dataclass
-class ListViewRender:
-    inner: ListView
+class ListSelectRender:
+    inner: ListSelect
 
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
@@ -140,13 +140,13 @@ if __name__ == "__main__":
             SIGWINCH, queue=queue
         ), events.for_stdin(queue=queue):
             console: Console = ctx.console
-            state = ListView(candidates=[Select(c) for c in candidates])
+            state = ListSelect(candidates=[Select(c) for c in candidates])
 
-            console.update_screen(ListViewRender(state))  # Initial display
+            console.update_screen(ListSelectRender(state))  # Initial display
 
             while event := queue.get():
                 if isinstance(event, Signal):
-                    console.update_screen(ListViewRender(state))  # Redraw on resize
+                    console.update_screen(ListSelectRender(state))  # Redraw on resize
                 elif isinstance(event.key, Keys):
                     if event.key == Keys.Up or event.key == Keys.Left:
                         state.bump_up()
@@ -166,7 +166,7 @@ if __name__ == "__main__":
                         )
                     else:
                         raise NotImplementedError(event)
-                    console.update_screen(ListViewRender(state))
+                    console.update_screen(ListSelectRender(state))
 
     def list_viewer(candidates: Iterable[str]) -> Optional[Set[str]]:
         return list_viewer_safe(candidates).value_or(None)
