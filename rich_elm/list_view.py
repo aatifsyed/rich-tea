@@ -4,20 +4,17 @@ from itertools import islice
 from queue import Queue
 from signal import SIGWINCH
 from typing import Generic, Iterable, List, Optional, Set, TypeVar
-from more_itertools import mark_ends
 
+from more_itertools import mark_ends
 from prompt_toolkit.key_binding import KeyPress
 from prompt_toolkit.keys import Keys
 from returns.result import safe
-from rich.console import (
-    Console,
-    ConsoleOptions,
-    RenderResult,
-)
+from rich.console import Console, ConsoleOptions, RenderResult
 from rich.style import Style
+from rich.table import Column, Table
+
 from rich_elm import events
 from rich_elm.events import Signal
-from rich.table import Table, Column
 
 logger = logging.getLogger(__name__)
 
