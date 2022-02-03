@@ -21,41 +21,44 @@ from rich.table import Table, box
 from rich.text import Text
 from rich_elm import events
 from rich_elm.events import Signal
-
-T = TypeVar("T")
-
-
-@dataclass
-class Select(Generic[T]):
-    inner: T
-    selected: bool = False
+from rich_elm.list_select import ListSelect, ListSelectRender
+from rich.layout import Layout
 
 
 @dataclass
-class ListView:
-    start: Optional[int]
-    end: Optional[int]
-    selected: int
-    candidates: List[Select[str]]
-
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> RenderResult:
-        pass
+class FuzzyFind:
+    haystack: ListSelect
+    needle: str = ""
 
 
 @dataclass
-class FuzzyState(ConsoleRenderable):
-    needle: str
-    choices: List[Select[str]]
-    index: int
+class FuzzyFindRender(ConsoleRenderable):
+    inner: FuzzyFind
 
     def __rich_console__(
         self, console: "Console", options: "ConsoleOptions"
     ) -> "RenderResult":
-        yield Text(text=self.needle, overflow="ellipsis")
-        for choice in self.choices:
-            yield Text(text=choice.inner, overflow="ellipsis")
+        layout = Layout()
+        header = Layout(ratio=0, minimum_size=2)
+        needle = Layout(
+            Text(text=f"> {self.inner.needle}", overflow="ellipsis"),
+            ratio=0,
+            minimum_size=1,
+        )
+
+        selected = sum(
+            1 for candidate in self.inner.haystack.candidates if candidate.selected
+        )
+        stats = Layout(
+            Text(text=f"{selected}/{len(self.inner.haystack.candidates)}"),
+            ratio=0,
+            minimum_size=1,
+        )
+        header.split_column(needle, stats)
+
+        haystack = Layout(ListSelectRender(self.inner.haystack))
+        layout.split_column(header, haystack)
+        yield layout
 
 
 @safe(exceptions=(KeyboardInterrupt,))  # type: ignore
@@ -65,22 +68,25 @@ def fuzzyfinder_safe(candidates: Iterable[str]) -> str:
         SIGWINCH, queue=queue
     ), events.for_stdin(queue=queue):
         console: Console = ctx.console
-        state = FuzzyState(
-            needle="", choices=list(Select(c) for c in candidates), index=0
-        )
+        state = FuzzyFind(haystack=ListSelect.from_iterable(candidates))
 
-        console.update_screen(state)  # Initial display
+        console.update_screen(FuzzyFindRender(state))  # Initial display
 
         while event := queue.get():
             if isinstance(event, Signal):
-                console.update_screen(state)  # Redraw on resize
-            elif isinstance(event.key, Keys):
-
-                # Control character
-                raise NotImplementedError(event)
+                console.update_screen(FuzzyFindRender(state))  # Redraw on resize
+            elif isinstance(event.key, Keys):  # Control character
+                if event.key == Keys.Up:
+                    state.haystack.bump_up()
+                elif event.key == Keys.Down:
+                    state.haystack.bump_down()
+                elif event.key == Keys.Tab:
+                    state.haystack.toggle_current()
+                else:
+                    raise NotImplementedError(event)
             else:
                 state.needle += event.key
-                console.update_screen(state)
+            console.update_screen(FuzzyFindRender(state))
 
 
 def fuzzyfinder(candidates: Iterable[str]) -> Optional[str]:

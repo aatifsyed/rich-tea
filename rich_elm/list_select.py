@@ -50,6 +50,10 @@ class ListSelect:
     cursor: int = 0
     """Tracks the currently selected item in the viewport, in the list"""
 
+    @classmethod
+    def from_iterable(cls, i: Iterable[str]) -> "ListSelect":
+        return cls(candidates=[Select(s) for s in i])
+
     def bump_up(self):
         self.cursor = saturating_sub(self.cursor, 1, 0)
 
