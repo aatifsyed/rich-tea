@@ -43,42 +43,40 @@ class Select(Generic[T]):
     inner: T
     selected: bool = False
 
+    def toggle(self):
+        self.selected = not self.selected
+
 
 @dataclass
-class ListSelect:
-    candidates: List[Select[str]]
+class Cursor(Generic[T]):
+    inner: List[T]
     cursor: int = 0
-    """Tracks the currently selected item in the viewport, in the list"""
 
     @classmethod
-    def from_iterable(cls, i: Iterable[str]) -> "ListSelect":
-        return cls(candidates=[Select(s) for s in i])
+    def from_iterable(cls, i: Iterable[T]) -> "Cursor":
+        return Cursor(inner=list(i))
 
     def bump_up(self):
         self.cursor = saturating_sub(self.cursor, 1, 0)
 
     def bump_down(self):
-        self.cursor = saturating_add(self.cursor, 1, max_index(self.candidates))
-
-    def toggle_current(self):
-        cursored = self.candidates[self.cursor]
-        cursored.selected = not cursored.selected
+        self.cursor = saturating_add(self.cursor, 1, max_index(self.inner))
 
     def jump_to_top(self):
         self.cursor = 0
 
     def jump_to_bottom(self):
-        self.cursor = max_index(self.candidates)
+        self.cursor = max_index(self.inner)
 
 
 @dataclass
 class ListSelectRender:
-    inner: ListSelect
+    inner: Cursor[Select[str]]
 
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
-        logger.info(f"{len(self.inner.candidates)=}, {self.inner.cursor=}")
+        logger.info(f"{len(self.inner.inner)=}, {self.inner.cursor=}")
         table = Table(
             *(
                 Column(header=name, no_wrap=True, min_width=1)
@@ -99,7 +97,7 @@ class ListSelectRender:
             start = 0
 
         for is_first, is_last, (i, candidate) in mark_ends(
-            islice(enumerate(self.inner.candidates), start, start + options.max_height)
+            islice(enumerate(self.inner.inner), start, start + options.max_height)
         ):
             if is_first and not is_last:
                 if i == 0:
@@ -109,7 +107,7 @@ class ListSelectRender:
             elif is_first and is_last:
                 scrollbar = "■"
             elif is_last:
-                if i == max_index(self.inner.candidates):
+                if i == max_index(self.inner.inner):
                     scrollbar = "■"
                 else:
                     scrollbar = "▼"
@@ -144,7 +142,9 @@ if __name__ == "__main__":
             SIGWINCH, queue=queue
         ), events.for_stdin(queue=queue):
             console: Console = ctx.console
-            state = ListSelect(candidates=[Select(c) for c in candidates])
+            state: Cursor[Select[str]] = Cursor.from_iterable(
+                Select(c) for c in candidates
+            )
 
             console.update_screen(ListSelectRender(state))  # Initial display
 
@@ -157,7 +157,7 @@ if __name__ == "__main__":
                     elif event.key == Keys.Down or event.key == Keys.Right:
                         state.bump_down()
                     elif event.key == Keys.Tab:
-                        state.toggle_current()
+                        state.inner[state.cursor].toggle()
                     elif event.key == Keys.Home:
                         state.jump_to_top()
                     elif event.key == Keys.End:
@@ -165,7 +165,7 @@ if __name__ == "__main__":
                     elif event.key == Keys.Enter:
                         return set(
                             candidate.inner
-                            for candidate in state.candidates
+                            for candidate in state.inner
                             if candidate.selected
                         )
                     else:
