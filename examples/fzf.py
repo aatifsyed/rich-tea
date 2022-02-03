@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from queue import Queue
 from signal import SIGWINCH
 from typing import Generic, Iterable, List, Optional, Set, TypeVar, Union
@@ -21,14 +21,32 @@ from rich.table import Table, box
 from rich.text import Text
 from rich_elm import events
 from rich_elm.events import Signal
-from rich_elm.list_select import ListSelect, ListSelectRender
+from rich_elm.list_select import (
+    ListSelect,
+    ListSelectRender,
+    Select,
+    saturating_add,
+    saturating_sub,
+)
 from rich.layout import Layout
 
 
 @dataclass
 class FuzzyFind:
-    haystack: ListSelect
+    haystack: List[str]
+    selected: Set[str] = field(default_factory=set)
     needle: str = ""
+    cursor: int = 0
+
+    @property
+    def list_select(self) -> ListSelect:
+        return ListSelect(
+            sorted(
+                (Select(w, selected=w in self.selected) for w in self.haystack),
+                key=lambda s: ratio(s.inner, self.needle),
+            ),
+            cursor=self.cursor,
+        )
 
 
 @dataclass
