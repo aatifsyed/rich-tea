@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "rich-elm"
-version = "0.1.1"
+version = "0.2.0"
 description = "Elm-style architecture for TUI apps, powered by Rich"
 authors = ["Aatif Syed <aatifsyedyp@gmail.com>"]
 repository = "https://github.com/aatifsyed/rich-elm"
