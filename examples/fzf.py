@@ -1,3 +1,4 @@
+import contextlib
 from dataclasses import dataclass, field
 from queue import Queue
 from signal import SIGWINCH
@@ -98,6 +99,11 @@ def fuzzyfinder_safe(candidates: Iterable[str]) -> Set[str]:
                         state.selected.remove(item)
                     else:
                         state.selected.add(item)
+                elif event.key == Keys.Right:
+                    state.selected.add(state.list_select.current().item)
+                elif event.key == Keys.Left:
+                    with contextlib.suppress(KeyError):
+                        state.selected.remove(state.list_select.current().item)
                 elif event.key == Keys.ControlU:
                     state.needle = ""
                 elif event.key == Keys.Backspace:
