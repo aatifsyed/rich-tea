@@ -9,7 +9,7 @@ from more_itertools import mark_ends
 from prompt_toolkit.key_binding import KeyPress
 from prompt_toolkit.keys import Keys
 from returns.result import safe
-from rich.console import Console, ConsoleOptions, RenderResult
+from rich.console import Console, ConsoleOptions, RenderResult, ConsoleRenderable
 from rich.style import Style
 from rich.table import Column, Table
 
@@ -72,8 +72,66 @@ class Cursor(Generic[T]):
         return self.items[self.cursor]
 
 
+def scrollbar_character(
+    is_first: bool, is_last: bool, index: int, max_index: int
+) -> str:
+    if is_first and not is_last:
+        if index == 0:
+            scrollbar = "■"
+        else:
+            scrollbar = "▲"
+    elif is_first and is_last:
+        scrollbar = "■"
+    elif is_last:
+        if index == max_index:
+            scrollbar = "■"
+        else:
+            scrollbar = "▼"
+    else:
+        scrollbar = "|"
+    return scrollbar
+
+
 @dataclass
-class ListSelectRender:
+class ListRender(ConsoleRenderable):
+    data: Cursor[str]
+
+    def __rich_console__(
+        self, console: "Console", options: "ConsoleOptions"
+    ) -> "RenderResult":
+        table = Table(
+            *(
+                Column(header=name, no_wrap=True, min_width=1)
+                for name in ["scrollbar", "text"]
+            ),
+            box=None,
+            show_header=False,
+        )
+
+        if self.data.cursor >= options.max_height:
+            start = (self.data.cursor - options.max_height) + 1
+        else:
+            start = 0
+
+        for is_first, is_last, (i, s) in mark_ends(
+            islice(enumerate(self.data.items), start, start + options.max_height)
+        ):
+            scrollbar = scrollbar_character(
+                is_first, is_last, i, max_index(self.data.items)
+            )
+
+            if i == self.data.cursor:
+                style = Style(bgcolor="white", color="black")
+            else:
+                style = None
+
+            table.add_row(scrollbar, s, style=style)
+
+        return table.__rich_console__(console, options)
+
+
+@dataclass
+class ListSelectRender(ConsoleRenderable):
     data: Cursor[Select[str]]
 
     def __rich_console__(
@@ -102,20 +160,9 @@ class ListSelectRender:
         for is_first, is_last, (i, candidate) in mark_ends(
             islice(enumerate(self.data.items), start, start + options.max_height)
         ):
-            if is_first and not is_last:
-                if i == 0:
-                    scrollbar = "■"
-                else:
-                    scrollbar = "▲"
-            elif is_first and is_last:
-                scrollbar = "■"
-            elif is_last:
-                if i == max_index(self.data.items):
-                    scrollbar = "■"
-                else:
-                    scrollbar = "▼"
-            else:
-                scrollbar = "|"
+            scrollbar = scrollbar_character(
+                is_first, is_last, i, max_index(self.data.items)
+            )
 
             if candidate.selected:
                 toggled = "+"
