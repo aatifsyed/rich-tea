@@ -19,5 +19,13 @@
 		"scope": "python",
 		"prefix": "from rich.console",
 		"body": "from rich.console import Console, ConsoleOptions, ConsoleRenderable, RenderResult"
+	},
+	"Import keys": {
+		"scope": "python",
+		"prefix": "from prompt_toolkit",
+		"body": [
+			"from prompt_toolkit.key_binding import KeyPress",
+			"from prompt_toolkit.keys import Keys"
+		]
 	}
 }
