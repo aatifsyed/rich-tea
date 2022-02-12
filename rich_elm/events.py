@@ -44,31 +44,40 @@ def for_stdin(*, queue: Queue) -> Generator[None, None, None]:
     new = deepcopy(old)
 
     # Reference: https://smlfamily.github.io/Basis/posix-tty.html
+    #            https://viewsourcecode.org/snaptoken/kilo/02.enteringRawMode.html
     # Copied from Prompt Toolkit: https://github.com/prompt-toolkit/python-prompt-toolkit/blob/e9eac2eb/prompt_toolkit/input/vt100.py#L216
 
     # Local control modes
     new[tty.LFLAG] &= ~(  # Turn off the following...
         0
         | termios.ECHO  # Show the user what they're typing in. Without this, the screen will flicker
-        | termios.ICANON  # Canonical mode. Without this, vmin is ignored, and nothing works
-        | termios.IEXTEN  # Extended functionality
+        | termios.ICANON  # Canonical mode. In canonical mode, input is only fed in on newlines from the user
+        | termios.IEXTEN  # Extended functionality. ^V will allow the next character to be sent literally
         # | termios.ISIG  # Mapping input characters to signals. Without this, ^C will raise a KeyboardInterrupt. Note this doesn't include SIGWINCH
     )
 
     # Input control
     new[tty.IFLAG] &= ~(  # Turn off the following...
         0
-        | termios.IXON  # Output control
+        | termios.IXON  # Have ^S stop data transmission to the program, and ^Q resume it
         | termios.IXOFF  # Input control
         | termios.ICRNL  # Mapping CR to NL on input
         | termios.INLCR  # Mapping NL to CR on input
         | termios.IGNCR  # Ignore CR
+        | termios.BRKINT
+        | termios.ICRNL
+        | termios.INPCK
+        | termios.ISTRIP  # Tradition
+    )
+
+    new[tty.OFLAG] &= ~(  # Turn off the following...
+        0 | termios.OPOST  # Output processing. E.g mapping \n -> \r\n
     )
 
     # The number of characters read at a time in non-canonical mode
     new[tty.CC][termios.VMIN] = 1
 
-    termios.tcsetattr(fileno, termios.TCSANOW, new)
+    termios.tcsetattr(fileno, termios.TCSANOW, new)  # Apply the change immediately
 
     with closing(selector):
         try:
@@ -78,8 +87,8 @@ def for_stdin(*, queue: Queue) -> Generator[None, None, None]:
             die = True  # Tell the thread to die
             event_thread.join()  # Join it, avoiding a read from an invalid file descriptor
         finally:
-            # Reset the terminal's settings
-            termios.tcsetattr(fileno, termios.TCSANOW, old)
+            # Reset the terminal's settings, after current input is flushed
+            termios.tcsetattr(fileno, termios.TCSAFLUSH, old)
 
 
 @dataclass

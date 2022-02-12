@@ -124,6 +124,7 @@ if __name__ == "__main__":
             console.update_screen(TextCursorRender(state))  # Initial display
 
             while event := queue.get():
+                logger.debug(event)
                 if isinstance(event, Signal):
                     console.update_screen(TextCursorRender(state))  # Redraw on resize
                 elif isinstance(event.key, Keys):
