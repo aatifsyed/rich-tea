@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from queue import Queue
 from signal import SIGWINCH
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
 from prompt_toolkit.key_binding import KeyPress
 from prompt_toolkit.keys import Keys
@@ -67,7 +67,7 @@ class TextCursor:
 
     @property
     def word_boundaries(self) -> List[int]:
-        matches: List[re.Match] = re.finditer(r"\b", self.text)
+        matches: Iterator[re.Match[str]] = re.finditer(r"\b", self.text)
         return [match.span()[0] for match in matches]
 
     def bump_left_by_word(self):
