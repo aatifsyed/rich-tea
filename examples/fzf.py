@@ -11,9 +11,9 @@ from returns.result import safe
 from rich.console import Console, ConsoleOptions, ConsoleRenderable, RenderResult
 from rich.layout import Layout
 from rich.text import Text
-from rich_elm import events
-from rich_elm.events import Signal
-from rich_elm.list_select import (
+from rich_tea import events
+from rich_tea.events import Signal
+from rich_tea.list_select import (
     Cursor,
     ListSelectRender,
     Select,

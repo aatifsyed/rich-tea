@@ -1,4 +1,4 @@
-from typing import List, Sized
+from typing import Sized
 
 
 def saturating_add(i: int, a: int, max: int) -> int:

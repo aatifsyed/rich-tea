@@ -13,9 +13,9 @@ from rich.console import Console, ConsoleOptions, ConsoleRenderable, RenderResul
 from rich.style import Style
 from rich.table import Column, Table
 
-from rich_elm import events
-from rich_elm.events import Signal
-from rich_elm.util import max_index, saturating_add, saturating_sub
+from rich_tea import events
+from rich_tea.events import Signal
+from rich_tea.util import max_index, saturating_add, saturating_sub
 
 logger = logging.getLogger(__name__)
 

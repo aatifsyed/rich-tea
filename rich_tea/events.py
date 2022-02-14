@@ -97,7 +97,7 @@ class Signal:
 
 
 @contextmanager
-def for_signals(*sig: Signals, queue=Queue) -> Generator[None, None, None]:
+def for_signals(*sig: Signals, queue: Queue) -> Generator[None, None, None]:
     def enqueue_signal(signum: int, frame: Optional[FrameType]):
         queue.put(Signal(signum))
 

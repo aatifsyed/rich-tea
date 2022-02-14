@@ -1,2 +1,2 @@
-# Elm-style architecture for TUI apps, powered by Rich
+# Tools for approximating The Elm Architecture, powered by Rich
 ![Fzf demo](./fzf-demo.gif)
