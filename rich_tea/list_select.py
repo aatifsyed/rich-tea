@@ -15,21 +15,12 @@ from rich.table import Column, Table
 
 from rich_tea import events
 from rich_tea.events import Signal
-from rich_tea.util import max_index, saturating_add, saturating_sub
+from rich_tea.util import Select, max_index, saturating_add, saturating_sub
 
 logger = logging.getLogger(__name__)
 
 
 T = TypeVar("T")
-
-
-@dataclass
-class Select(Generic[T]):
-    item: T
-    selected: bool = False
-
-    def toggle(self):
-        self.selected = not self.selected
 
 
 @dataclass
