@@ -1,23 +1,24 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Queue
 from signal import SIGWINCH
 from typing import Dict, Generic, Iterable, List, Optional, Set, TypeVar, Union
-from more_itertools import one
 
+from more_itertools import one
 from prompt_toolkit.key_binding import KeyPress
 from prompt_toolkit.keys import Keys
 from returns.result import safe
 from rich.console import Console, ConsoleOptions, ConsoleRenderable, RenderResult
+from rich.style import Style
 from rich.text import Text
 from rich.tree import Tree
 
 from rich_tea import events
 from rich_tea.events import Signal
-from rich.style import Style
+from rich_tea.util import max_index, saturating_add, saturating_sub
 
 logger = logging.getLogger(__name__)
 
@@ -42,18 +43,38 @@ class TreeData(Generic[T]):
 @dataclass
 class TreeCursor:
     tree: TreeData[str]
-    cursor: List[str]
+    cursor: List[int] = field(default_factory=list)
+
+    def at(self, cursor: List[int]) -> TreeData[str]:
+        current = self.tree
+        for index in cursor:
+            current = current.children[index]
+        return current
 
     @property
-    def selected(self) -> str:
-        current = self.tree
-        for key in self.cursor:
-            current = one(
-                filter(
-                    lambda child: child.item == key,
-                    current.children,
-                )
+    def pointee_parent(self) -> Optional[TreeData[str]]:
+        if len(self.cursor) == 0:
+            return None
+        else:
+            return self.at(self.cursor[:-1])
+
+    def bump_up(self):
+        if self.pointee_parent is not None:
+            self.cursor[-1] = saturating_sub(self.cursor[-1], 1, 0)
+
+    def bump_down(self):
+        if self.pointee_parent is not None:
+            self.cursor[-1] = saturating_add(
+                self.cursor[-1], 1, max_index(self.pointee_parent.children)
             )
+
+    def bump_deeper(self):
+        if len(self.at(self.cursor).children) >= 1:
+            self.cursor.append(0)
+
+    def bump_shallower(self):
+        if len(self.cursor) > 1:
+            self.cursor.pop()
 
 
 @dataclass
@@ -65,25 +86,26 @@ class TreeRender(
     def __rich_console__(
         self, console: "Console", options: "ConsoleOptions"
     ) -> "RenderResult":
-        def to_rich_tree(parent_location: List[str], tree: TreeData[str]) -> Tree:
-            current_location = parent_location + [tree.item]
+        def to_rich_tree(tree: TreeData[str]) -> Tree:
             rich_tree = Tree(
                 label=Text(
                     text=f"{tree.item}..." if tree.collapsed else tree.item,
-                    style=Style(reverse=True)
-                    if current_location == self.data.cursor
-                    else "",
                 ),
                 expanded=not tree.collapsed,
                 style=Style(underline=True if tree.collapsed else None),
             )
             for child in tree.children:
-                rich_tree.add(
-                    to_rich_tree(parent_location=current_location, tree=child)
-                )
+                rich_tree.add(to_rich_tree(tree=child))
             return rich_tree
 
-        yield to_rich_tree(parent_location=[], tree=self.data.tree)
+        tree = to_rich_tree(self.data.tree)
+
+        current = tree
+        for index in self.data.cursor:
+            current = current.children[index]
+        text: Text = current.label
+        text.style = Style(reverse=True)
+        yield tree
 
 
 if __name__ == "__main__":
@@ -99,19 +121,24 @@ if __name__ == "__main__":
             SIGWINCH, queue=queue
         ), events.for_stdin(queue=queue):
             console: Console = ctx.console
-            state = TreeCursor(
-                tree=tree,
-                cursor=[tree.item],
-            )
+            state = TreeCursor(tree=tree)
 
             console.update_screen(TreeRender(state))  # Initial display
+            logger.debug(state)
 
             while event := queue.get():
+                logger.debug(event)
                 if isinstance(event, Signal):
                     console.update_screen(TreeRender(state))  # Redraw on resize
                 elif isinstance(event.key, Keys):
-                    if False:
-                        pass
+                    if event.key == Keys.Down:
+                        state.bump_down()
+                    elif event.key == Keys.Up:
+                        state.bump_up()
+                    elif event.key == Keys.Left:
+                        state.bump_shallower()
+                    elif event.key == Keys.Right:
+                        state.bump_deeper()
                     else:
                         raise NotImplementedError(event)
                     console.update_screen(TreeRender(state))
@@ -120,6 +147,7 @@ if __name__ == "__main__":
                         pass
                     else:
                         raise NotImplementedError(event)
+                logger.debug(state)
 
     def tree_viewer(tree: TreeData[str]) -> Optional[Set[str]]:
         return tree_viewer_safe(tree).value_or(None)
@@ -140,7 +168,7 @@ if __name__ == "__main__":
                                 "Complex is better than complicated.",
                             ]
                         ],
-                        collapsed=True,
+                        collapsed=False,
                     ),
                     *[
                         TreeData.leaf(c)
