@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import os
 import selectors
 import signal
@@ -12,8 +13,10 @@ from signal import Signals
 from threading import Thread
 from types import FrameType
 from typing import Generator, Optional
-
+from prompt_toolkit.key_binding import KeyPress
+from prompt_toolkit.keys import Keys
 from prompt_toolkit.input.vt100_parser import Vt100Parser
+from rich.console import Console
 
 
 @contextmanager
@@ -107,3 +110,11 @@ def for_signals(*sig: Signals, queue: Queue) -> Generator[None, None, None]:
     finally:
         for s, old_handler in old_handlers.items():
             signal.signal(s, old_handler)
+
+
+if __name__ == "__main__":
+    queue: "Queue[KeyPress]" = Queue()
+    with Console(stderr=True).screen() as ctx, for_stdin(queue=queue):
+        console: Console = ctx.console
+        while event := queue.get():
+            console.log(event)
